@@ -37,15 +37,18 @@ function shapeRow(row) {
     id: row.id,
     name: row.name,
     gender: row.gender,
-    gender_probability: row.gender_probability !== null ? Number(row.gender_probability) : null,
+    gender_probability:
+      row.gender_probability !== null ? Number(row.gender_probability) : null,
     age: row.age,
     age_group: row.age_group,
     country_id: row.country_id,
     country_name: row.country_name,
-    country_probability: row.country_probability !== null ? Number(row.country_probability) : null,
-    created_at: row.created_at instanceof Date
-      ? row.created_at.toISOString()
-      : row.created_at,
+    country_probability:
+      row.country_probability !== null ? Number(row.country_probability) : null,
+    created_at:
+      row.created_at instanceof Date
+        ? row.created_at.toISOString()
+        : row.created_at,
   };
 }
 
@@ -85,10 +88,12 @@ module.exports = function stage2Routes(pool) {
       // caller passes alongside ?q=
       const raw = {
         ...parsed.filters,
-        ...(req.query.page   !== undefined ? { page:   req.query.page   } : {}),
-        ...(req.query.limit  !== undefined ? { limit:  req.query.limit  } : {}),
-        ...(req.query.sort_by!== undefined ? { sort_by:req.query.sort_by} : {}),
-        ...(req.query.order  !== undefined ? { order:  req.query.order  } : {}),
+        ...(req.query.page !== undefined ? { page: req.query.page } : {}),
+        ...(req.query.limit !== undefined ? { limit: req.query.limit } : {}),
+        ...(req.query.sort_by !== undefined
+          ? { sort_by: req.query.sort_by }
+          : {}),
+        ...(req.query.order !== undefined ? { order: req.query.order } : {}),
       };
 
       const v = validateAndNormalize(raw);
@@ -97,12 +102,10 @@ module.exports = function stage2Routes(pool) {
       const result = await runListQuery(pool, v.params);
       return res.json({
         status: "success",
-        query: q,
-        interpreted_as: parsed.filters,
-        page:  result.page,
+        page: result.page,
         limit: result.limit,
         total: result.total,
-        data:  result.data,
+        data: result.data,
       });
     } catch (err) {
       next(err);
@@ -120,10 +123,10 @@ module.exports = function stage2Routes(pool) {
       const result = await runListQuery(pool, v.params);
       return res.json({
         status: "success",
-        page:  result.page,
+        page: result.page,
         limit: result.limit,
         total: result.total,
-        data:  result.data,
+        data: result.data,
       });
     } catch (err) {
       next(err);

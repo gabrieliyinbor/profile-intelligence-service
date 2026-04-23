@@ -1,12 +1,12 @@
 const express = require("express");
 const cors = require("cors");
 require("dotenv").config();
+
 const { initDb, pool } = require("./db");
 const stage2Routes = require("./stage2Routes");
 const {
   createProfile,
   getProfileById,
-  listProfiles,
   deleteProfile,
 } = require("./profileService");
 
@@ -16,6 +16,8 @@ const host = process.env.HOST || "0.0.0.0";
 
 app.use(cors({ origin: "*" }));
 app.use(express.json());
+
+// Stage 2 routes must come before /api/profiles/:id
 app.use(stage2Routes(pool));
 
 function sendError(res, statusCode, message) {
@@ -115,7 +117,7 @@ app.use((error, req, res, next) => {
   }
 
   if (error.response || error.code === "ECONNABORTED") {
-    return sendError(res, 502, "Upstream or server failure");
+    return sendError(res, 502, "Server failure");
   }
 
   if (error.statusCode) {
@@ -123,7 +125,7 @@ app.use((error, req, res, next) => {
   }
 
   console.error(error);
-  return sendError(res, 500, "Internal server error");
+  return sendError(res, 500, "Server failure");
 });
 
 async function startServer() {

@@ -3,10 +3,10 @@ function normalizeName(name) {
 }
 
 function getAgeGroup(age) {
-  if (age >= 0 && age <= 12) return 'child';
-  if (age >= 13 && age <= 19) return 'teenager';
-  if (age >= 20 && age <= 59) return 'adult';
-  return 'senior';
+  if (age >= 0 && age <= 12) return "child";
+  if (age >= 13 && age <= 19) return "teenager";
+  if (age >= 20 && age <= 59) return "adult";
+  return "senior";
 }
 
 function pickTopCountry(countries) {
@@ -28,10 +28,10 @@ function fullProfileRowToResponse(row) {
     name: row.name,
     gender: row.gender,
     gender_probability: Number(row.gender_probability),
-    sample_size: row.sample_size,
     age: row.age,
     age_group: row.age_group,
     country_id: row.country_id,
+    country_name: row.country_name,
     country_probability: Number(row.country_probability),
     created_at: new Date(row.created_at).toISOString(),
   };
@@ -42,9 +42,13 @@ function listProfileRowToResponse(row) {
     id: row.id,
     name: row.name,
     gender: row.gender,
+    gender_probability: Number(row.gender_probability),
     age: row.age,
     age_group: row.age_group,
     country_id: row.country_id,
+    country_name: row.country_name,
+    country_probability: Number(row.country_probability),
+    created_at: new Date(row.created_at).toISOString(),
   };
 }
 

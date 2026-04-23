@@ -21,8 +21,6 @@ const AGE_GROUP_PATTERNS = [
   { re: /\b(senior|seniors|elderly|old\s+people)\b/, value: "senior" },
 ];
 
-/** Words that signal the query IS a query even when no filter is extracted. */
-const CONTENT_WORDS_RE = /\b(people|everyone|users?|profiles?|individuals?|persons?|anyone|show|list|find|get|all)\b/;
 
 /**
  * Parse a natural-language query into structured filters.
@@ -146,9 +144,7 @@ function parseNaturalLanguage(query) {
   // 6. Content words — query is interpretable even if no filters extracted
   //    (e.g. "all profiles", "show me everyone").
   // ---------------------------------------------------------------
-  if (CONTENT_WORDS_RE.test(s)) {
-    recognized = true;
-  }
+
 
   if (!recognized) {
     return { error: "uninterpretable" };
