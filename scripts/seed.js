@@ -1,29 +1,16 @@
 #!/usr/bin/env node
 /**
- * Seed script — inserts all 2026 profiles from a JSON file into the database.
+ * Seed script — inserts all profiles from a JSON file into the database.
  *
  * Usage:
- *     node scripts/seed.js                       # defaults to ./seed-data/profiles.json
+ *     node scripts/seed.js                       # defaults to ./seed-data/seed_profiles.json
  *     node scripts/seed.js path/to/profiles.json
  *
- * IDEMPOTENT: Re-running does NOT create duplicates.
- * Uses  INSERT ... ON CONFLICT (name) DO NOTHING  on the unique name constraint.
+ * IDEMPOTENT via ON CONFLICT (name) DO NOTHING.
  *
- * Expected JSON shape — an array of objects. Fields are flexible; the script
- * tolerates either the Stage 1 enriched shape OR the raw Insighta Labs seed
- * shape. Required keys per record:
- *
- *   name                 string
- *   gender               "male" | "female"
- *   gender_probability   number 0..1
- *   age                  integer
- *   age_group            "child" | "teenager" | "adult" | "senior"
- *   country_id           2-letter ISO
- *   country_name         string
- *   country_probability  number 0..1
- *
- * If `age_group` is missing, it is derived from `age` using the defaults:
- *   0–12 child, 13–19 teenager, 20–59 adult, 60+ senior
+ * This version DYNAMICALLY INTROSPECTS the profiles table to figure out
+ * which columns exist, so it works whether or not the Stage 1 schema has
+ * a legacy `sample_size` column.
  */
 
 require("dotenv").config();
@@ -32,10 +19,15 @@ const path = require("path");
 const { v7: uuidv7 } = require("uuid");
 const { Pool } = require("pg");
 
-const DEFAULT_PATH = path.join(__dirname, "..", "seed-data", "profiles.json");
+const DEFAULT_PATH = path.join(
+  __dirname,
+  "..",
+  "seed-data",
+  "seed_profiles.json",
+);
 const FILE = process.argv[2] || DEFAULT_PATH;
 
-const BATCH_SIZE = 100;
+const BATCH_SIZE = 50;
 
 function deriveAgeGroup(age) {
   if (age <= 12) return "child";
@@ -57,20 +49,22 @@ function normalizeRecord(r) {
     country_id: String(r.country_id).toUpperCase(),
     country_name: r.country_name || null,
     country_probability: Number(r.country_probability),
+    sample_size: r.sample_size !== undefined ? Number(r.sample_size) : 0,
   };
 }
 
 async function main() {
   if (!fs.existsSync(FILE)) {
     console.error(`Seed file not found: ${FILE}`);
-    console.error("Pass the path as an argument: node scripts/seed.js <file>");
     process.exit(1);
   }
 
   const raw = JSON.parse(fs.readFileSync(FILE, "utf8"));
   const records = Array.isArray(raw) ? raw : raw.data || raw.profiles;
   if (!Array.isArray(records)) {
-    console.error("Seed file must be an array or { data: [...] } / { profiles: [...] }");
+    console.error(
+      "Seed file must be an array or { data: [...] } / { profiles: [...] }",
+    );
     process.exit(1);
   }
 
@@ -78,13 +72,50 @@ async function main() {
 
   const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
-    ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
+    ssl:
+      process.env.NODE_ENV === "production"
+        ? { rejectUnauthorized: false }
+        : false,
   });
 
   const client = await pool.connect();
-  let inserted = 0, skipped = 0, failed = 0;
+  let inserted = 0,
+    skipped = 0,
+    failed = 0;
 
   try {
+    // Introspect the profiles table to find out which columns actually exist
+    const colResult = await client.query(`
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'profiles'
+    `);
+    const existingCols = new Set(colResult.rows.map((r) => r.column_name));
+
+    // The columns we *want* to insert, in order. Filter by what's actually in the table.
+    const desiredCols = [
+      "id",
+      "name",
+      "gender",
+      "gender_probability",
+      "age",
+      "age_group",
+      "country_id",
+      "country_name",
+      "country_probability",
+      "sample_size",
+    ];
+    const cols = desiredCols.filter((c) => existingCols.has(c));
+
+    if (!cols.length) {
+      console.error(
+        "No matching columns found in profiles table. Did the migration run?",
+      );
+      process.exit(1);
+    }
+
+    console.log(`Inserting into columns: ${cols.join(", ")}`);
+
     await client.query("BEGIN");
 
     for (let i = 0; i < records.length; i += BATCH_SIZE) {
@@ -94,37 +125,42 @@ async function main() {
 
       for (const raw of batch) {
         let r;
-        try { r = normalizeRecord(raw); }
-        catch (e) { failed++; continue; }
+        try {
+          r = normalizeRecord(raw);
+        } catch (e) {
+          failed++;
+          continue;
+        }
 
-        const base = values.length;
-        placeholders.push(
-          `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, ` +
-          `$${base + 5}, $${base + 6}, $${base + 7}, $${base + 8}, $${base + 9})`
-        );
-        values.push(
-          r.id, r.name, r.gender, r.gender_probability,
-          r.age, r.age_group, r.country_id, r.country_name, r.country_probability
-        );
+        const rowPlaceholders = [];
+        for (const col of cols) {
+          values.push(r[col]);
+          rowPlaceholders.push(`$${values.length}`);
+        }
+        placeholders.push(`(${rowPlaceholders.join(", ")})`);
       }
 
       if (!placeholders.length) continue;
 
       const sql = `
-        INSERT INTO profiles
-          (id, name, gender, gender_probability, age, age_group, country_id, country_name, country_probability)
-        VALUES
-          ${placeholders.join(",\n          ")}
+        INSERT INTO profiles (${cols.join(", ")})
+        VALUES ${placeholders.join(", ")}
         ON CONFLICT (name) DO NOTHING
         RETURNING id
       `;
-      const result = await client.query(sql, values);
-      inserted += result.rowCount;
-      skipped += batch.length - result.rowCount;
+
+      try {
+        const result = await client.query(sql, values);
+        inserted += result.rowCount;
+        skipped += batch.length - result.rowCount;
+      } catch (e) {
+        console.error(`\nBatch ${i}-${i + batch.length} failed:`, e.message);
+        throw e;
+      }
 
       process.stdout.write(
         `\r  processed ${Math.min(i + BATCH_SIZE, records.length)}/${records.length}  ` +
-        `inserted=${inserted}  skipped=${skipped}`
+          `inserted=${inserted}  skipped=${skipped}`,
       );
     }
 
