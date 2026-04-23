@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
-    "db:init": "node scripts/init-db.js"
+    "db:init": "node scripts/init-db.js",
+    "seed": "node scripts/seed.js",
+    "migrate": "node -e \"require('pg').Client; const fs=require('fs'); const {Client}=require('pg'); const c=new Client({connectionString:process.env.DATABASE_URL, ssl:process.env.NODE_ENV==='production'?{rejectUnauthorized:false}:false}); c.connect().then(()=>c.query(fs.readFileSync('sql/migrate-stage2.sql','utf8'))).then(()=>{console.log('migrated');c.end()})\""
   },
   "keywords": [
     "express",
