@@ -2,15 +2,9 @@
 /**
  * Seed script — inserts all profiles from a JSON file into the database.
  *
- * Usage:
- *     node scripts/seed.js                       # defaults to ./seed-data/seed_profiles.json
- *     node scripts/seed.js path/to/profiles.json
- *
  * IDEMPOTENT via ON CONFLICT (name) DO NOTHING.
- *
- * This version DYNAMICALLY INTROSPECTS the profiles table to figure out
- * which columns exist, so it works whether or not the Stage 1 schema has
- * a legacy `sample_size` column.
+ * Dynamically introspects the profiles table columns; populates
+ * normalized_name = lower(trim(name)) if that column exists.
  */
 
 require("dotenv").config();
@@ -39,9 +33,11 @@ function deriveAgeGroup(age) {
 function normalizeRecord(r) {
   const age = parseInt(r.age, 10);
   if (Number.isNaN(age)) throw new Error(`invalid age: ${JSON.stringify(r)}`);
+  const name = String(r.name);
   return {
     id: r.id || uuidv7(),
-    name: String(r.name),
+    name,
+    normalized_name: name.trim().toLowerCase(),
     gender: r.gender,
     gender_probability: Number(r.gender_probability),
     age,
@@ -84,7 +80,6 @@ async function main() {
     failed = 0;
 
   try {
-    // Introspect the profiles table to find out which columns actually exist
     const colResult = await client.query(`
       SELECT column_name
       FROM information_schema.columns
@@ -92,10 +87,10 @@ async function main() {
     `);
     const existingCols = new Set(colResult.rows.map((r) => r.column_name));
 
-    // The columns we *want* to insert, in order. Filter by what's actually in the table.
     const desiredCols = [
       "id",
       "name",
+      "normalized_name",
       "gender",
       "gender_probability",
       "age",
