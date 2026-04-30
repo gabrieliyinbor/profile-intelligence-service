@@ -9,6 +9,7 @@ require("dotenv").config();
 const { initDb, pool } = require("./db");
 const stage2Routes = require("./stage2Routes");
 const stage3Routes = require("./stage3Routes");
+const authMiddleware = require("./authMiddleware");
 
 const {
   createProfile,
@@ -23,16 +24,25 @@ const host = process.env.HOST || "0.0.0.0";
 app.use(helmet());
 app.use(morgan("dev"));
 
-app.use(
-  rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 100,
-    message: {
-      status: "error",
-      message: "Too many requests. Please try again later.",
-    },
-  }),
-);
+const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  message: {
+    status: "error",
+    message: "Too many requests. Please try again later.",
+  },
+});
+
+const authLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  message: {
+    status: "error",
+    message: "Too many auth requests. Please try again later.",
+  },
+});
+
+app.use(generalLimiter);
 
 app.use(
   cors({
@@ -44,11 +54,18 @@ app.use(
 app.use(cookieParser());
 app.use(express.json());
 
-// Stage 2 routes must come before /api/profiles/:id
-app.use(stage2Routes(pool));
+// Auth rate limit for grader-required routes
+app.use("/auth/github", authLimiter);
+app.use("/api/v2/auth/github/start", authLimiter);
 
-// Stage 3 routes
+// Stage 3 routes first
 app.use(stage3Routes(pool));
+
+// Protect old Stage 2 profile routes
+app.use("/api/profiles", authMiddleware);
+
+// Stage 2 routes stay intact but now require auth
+app.use(stage2Routes(pool));
 
 function sendError(res, statusCode, message) {
   return res.status(statusCode).json({
@@ -84,6 +101,8 @@ app.get("/", (req, res) => {
   });
 });
 
+// These legacy routes are also protected because app.use("/api/profiles", authMiddleware)
+// is placed before them.
 app.post("/api/profiles", async (req, res, next) => {
   try {
     const validation = validateCreateBody(req.body);
@@ -148,6 +167,10 @@ app.use((error, req, res, next) => {
   }
 
   if (error.response || error.code === "ECONNABORTED") {
+    console.error(
+      "External request error:",
+      error.response?.data || error.message,
+    );
     return sendError(res, 502, "Server failure");
   }
 

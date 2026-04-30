@@ -14,7 +14,7 @@ function generateCodeVerifier() {
 
 function generateCodeChallenge(codeVerifier) {
   return base64UrlEncode(
-    crypto.createHash("sha256").update(codeVerifier).digest()
+    crypto.createHash("sha256").update(codeVerifier).digest(),
   );
 }
 

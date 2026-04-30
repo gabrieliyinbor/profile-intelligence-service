@@ -11,7 +11,7 @@ function generateAccessToken(user) {
       role: user.role,
     },
     ACCESS_SECRET,
-    { expiresIn: "15m" }
+    { expiresIn: "15m" },
   );
 }
 
@@ -23,7 +23,7 @@ function generateRefreshToken(user) {
       role: user.role,
     },
     REFRESH_SECRET,
-    { expiresIn: "7d" }
+    { expiresIn: "7d" },
   );
 }
 

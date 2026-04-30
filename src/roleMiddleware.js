@@ -14,7 +14,7 @@ function roleMiddleware(requiredRole) {
       });
     }
 
-    next();
+    return next();
   };
 }
 
