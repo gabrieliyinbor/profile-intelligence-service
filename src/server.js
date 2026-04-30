@@ -1,9 +1,15 @@
 const express = require("express");
 const cors = require("cors");
+const helmet = require("helmet");
+const morgan = require("morgan");
+const rateLimit = require("express-rate-limit");
+const cookieParser = require("cookie-parser");
 require("dotenv").config();
 
 const { initDb, pool } = require("./db");
 const stage2Routes = require("./stage2Routes");
+const stage3Routes = require("./stage3Routes");
+
 const {
   createProfile,
   getProfileById,
@@ -14,11 +20,35 @@ const app = express();
 const port = Number(process.env.PORT || 3000);
 const host = process.env.HOST || "0.0.0.0";
 
-app.use(cors({ origin: "*" }));
+app.use(helmet());
+app.use(morgan("dev"));
+
+app.use(
+  rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 100,
+    message: {
+      status: "error",
+      message: "Too many requests. Please try again later.",
+    },
+  }),
+);
+
+app.use(
+  cors({
+    origin: process.env.WEB_PORTAL_URL || "*",
+    credentials: true,
+  }),
+);
+
+app.use(cookieParser());
 app.use(express.json());
 
 // Stage 2 routes must come before /api/profiles/:id
 app.use(stage2Routes(pool));
+
+// Stage 3 routes
+app.use(stage3Routes(pool));
 
 function sendError(res, statusCode, message) {
   return res.status(statusCode).json({
@@ -57,6 +87,7 @@ app.get("/", (req, res) => {
 app.post("/api/profiles", async (req, res, next) => {
   try {
     const validation = validateCreateBody(req.body);
+
     if (!validation.valid) {
       return sendError(res, validation.statusCode, validation.message);
     }
@@ -131,6 +162,7 @@ app.use((error, req, res, next) => {
 async function startServer() {
   try {
     await initDb();
+
     app.listen(port, host, () => {
       console.log(`Server running on http://${host}:${port}`);
     });
